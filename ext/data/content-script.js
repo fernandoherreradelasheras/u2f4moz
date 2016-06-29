@@ -116,3 +116,87 @@ exportFunction(function(){}, unsafeWindow, {
   defineAs: "u2f"
 });
 cloneFunctions(u2f, unsafeWindow.u2f);
+
+
+var chromeOnPage = createObjectIn(unsafeWindow, {
+  defineAs: "chrome"
+});
+var chromeRuntimeOnPage = createObjectIn(chromeOnPage, {
+  defineAs: "runtime"
+});
+
+function chromeSendMessage(id, msg, callback) {
+  if (id == "kmendfapggjehodndflmmgagdbamhnfd") {
+
+    chromeRuntimeOnPage.lastError = null;
+  } else
+    chromeRuntimeOnPage.lastError = {
+      message: "Not found"
+    };
+  callback();
+}
+
+function chromeConnect() {
+  var msgListeners = [];
+  var obj = cloneInto({
+    name: "U2f",
+    onMessage: { }
+  }, unsafeWindow);
+  exportFunction(function(msg) {
+    if (msg.type == "u2f_sign_request") {
+      // Remove U2F_V1 requests
+      for (var i = msg.signRequests.length; i--;) {
+        if (msg.signRequests[i]['version'] === 'U2F_V1') {
+          msg.signRequests.splice(i, 1);
+        }
+      }
+      u2f.sign(msg.signRequests, function(resp) {
+        resp.version = "U2F_V2";
+        var r = cloneInto({
+          type: "u2f_sign_response",
+          responseData: resp,
+          requestId: msg.requestId
+        }, unsafeWindow);
+        for (var listener of msgListeners)
+          listener(r);
+      }, msg.timeoutSeconds);
+    } else if (msg.type == "u2f_register_request") {
+      // Remove U2F_V1 requests
+      for (var i = msg.registerRequests.length; i--;) {
+        if (msg.registerRequests[i]['version'] === 'U2F_V1') {
+          msg.registerRequests.splice(i, 1);
+        }
+      }
+
+      u2f.register(msg.registerRequests, msg.signRequests, function(resp) {
+        resp.version = "U2F_V2";
+        var r = cloneInto({
+          type: "u2f_register_response",
+          responseData: resp,
+          requestId: msg.requestId
+        }, unsafeWindow, { wrapReflectors: true });
+        for (var listener of msgListeners)
+	  console.log("Calling listener...: " + listener.toString() + " with data" + JSON.stringify(r));
+          listener(r);
+      }, msg.timeoutSeconds);
+    } else {
+    }
+  }, obj, {
+    defineAs: "postMessage"
+  });
+  exportFunction(function(listener) {
+    console.log("Adding listener: " + listener.toString());
+    msgListeners.push(listener);
+  }, obj.onMessage, {
+    defineAs: "addListener",
+    allowCrossOriginArguments: true
+  });
+  return obj;
+}
+
+exportFunction(chromeSendMessage, chromeRuntimeOnPage, {
+  defineAs: "sendMessage"
+});
+exportFunction(chromeConnect, chromeRuntimeOnPage, {
+  defineAs: "connect"
+});

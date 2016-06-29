@@ -113,7 +113,7 @@ u2fh_register (u2fh_devs * devs,
   size_t bdlen = sizeof (bd);
   size_t len;
   int rc = U2FH_JSON_ERROR;
-  char chalb64[256];
+  char chalb64[512];
   size_t challen = sizeof (chalb64);
   int iterations = 0;
 

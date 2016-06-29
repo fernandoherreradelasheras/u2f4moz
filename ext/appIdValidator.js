@@ -6,7 +6,7 @@ const { resolve, reject, defer } = require('sdk/core/promise');
 const { URL, getTLD } = require("sdk/url");
 
 function allValid(promises) {
-  const { resolve, promise } = defer();
+  const { promise, resolve } = defer();
 
   if (promises.length == 0) {
     resolve([]);
@@ -34,18 +34,19 @@ function allValid(promises) {
 }
 
 function fetchTrustedFacetsList(url) {
-  const { resolve, reject, promise } = defer();
+  const { promise, resolve, reject } = defer();
   let r = new Request({
     url: url,
     anonymous: true,
-    onComplete: res => {
+    onComplete: function (res) {
       if (res.status < 200 || res.status > 399)
         return reject("Can't fetch trusted facets list");
 
       let found = false;
       for (let n in res.headers) {
         if (n.toLowerCase() == "content-type") {
-          if (res.headers[n] == "application/fido.trusted-apps+json")
+          if (res.headers[n] == "application/fido.trusted-apps+json" || 
+              res.headers[n] == "application/json")
             found = true;
           break;
         }
@@ -61,7 +62,7 @@ function fetchTrustedFacetsList(url) {
       if (facets.length != 1)
         return reject("No trusted facet with version 1.0");
 
-      resolve(facets[0].ids);
+      return resolve(facets[0].ids);
     }
   });
   r.get();
@@ -88,6 +89,10 @@ function getTLDPlusOne(url) {
     }
   }
 
+  if (url.protocol != "https:" && url.protocol != "http:") {
+    return "";
+  }
+
   let tld = getTLD(url);
   return url.host.slice(0, -tld.length - 1).replace(/.*\.([^.]+)$/, "$1") + "." + tld;
 }
@@ -112,14 +117,11 @@ function hasValidAppId(facetId, challenge) {
     if (url2str(u) == url2str(ou))
       return resolve(challenge);
 
-    if (getTLDPlusOne(u) != getTLDPlusOne(ou))
-      return reject("Not matching origin domain and appID");
-
-    {
+    if (u.scheme == "https" && url2str(u, true).endsWith(".json")) {
       const { resolve, reject, promise } = defer();
 
       fetchTrustedFacetsList(challenge.appId).then(ids => {
-        let tld = getTLDPlusOne(u);
+        let tld = getTLDPlusOne(ou);
         ids = ids.filter(id => getTLDPlusOne(id) == tld);
         if (ids.indexOf(url2str(ou)) < 0) {
           reject("No entry for facet in trusted facet list");
@@ -128,7 +130,8 @@ function hasValidAppId(facetId, challenge) {
         resolve(challenge);
       });
       return promise;
-    }
+    } else if (getTLDPlusOne(u) != getTLDPlusOne(ou))
+      return reject("Not matching origin domain and appID");
   } catch (ex) {
     reject("Invalid appId");
   }
